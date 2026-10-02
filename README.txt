@@ -1,21 +1,28 @@
-戦略さめがめ v0.2
+戦略さめがめ v1.01
 
-【構成】
-index.html             画面のHTML
-css/style.css          見た目
-js/config.js           ゲーム調整値 / Firebase設定
-js/app.js              ゲーム・シングル・マルチ・観戦の処理
-assets/image/           画像・背景素材（後日追加）
-assets/music/           BGM素材（後日追加）
-assets/se/              SE素材（後日追加）
+公開構成
+- index.html
+- css/style.css
+- js/config.js
+- js/boards.js
+- js/app.js
+- assets/image/
+- assets/music/
+- assets/se/
 
-【スマホ側保存先】
-Download/ゲーム/戦略さめがめ/samegame/
+v1.01 主な更新
+- 原色・光沢・四隅コーナーカットのブロックへ変更
+- アイコンの切り取り（移動・拡大）を追加
+- プレイヤー情報表示を縮小
+- BGM/SEの%数値直接入力を追加（半角数字 0〜100）
+- バトル中サウンド設定を追加
+- 全消し可能な予備盤面プール方式へ変更（盤面IDは非表示）
+- マルチを最大6人へ拡張
+- 相手のリアルタイム小盤面を複数人表示用に縮小
+- リザルトは「ステージN到達」表示に変更
+- マルチのリザルトから同じ待機ルームへ戻る動線を追加
+- 待機ルームにチャットを追加
+- ルーム発見/開始案内の出っぱなしを修正（トースト自動消去）
 
-【GitHub】
-muya-nakama/strategic-samegame
-
-【Termux】
-uploadsame
-
-※ uploadsame は samegame フォルダを完全差し替えでGitHubへ反映する前提です。
+調整値は js/config.js に集約しています。
+音楽・SE・背景素材は後から assets 配下へ追加予定です。
