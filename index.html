@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>戦略さめがめ v0.2</title>
+<link rel="stylesheet" href="css/style.css?v=0.2.0">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+</head>
+<body><div class="app">
+<section id="pageTop">
+  <h1>戦略さめがめ <span class="tiny">v0.2</span></h1>
+  <div class="sub">共通盤面・残ブロック減点・共通ミッションで競うスコア型さめがめ。</div>
+  <div id="topProfile" class="card profile"></div>
+  <div class="menu">
+    <button id="singleBtn">シングルプレイ</button>
+    <button id="createBtn">ルーム作成</button>
+    <button id="joinBtn">ルーム参加</button>
+    <button id="settingsBtn" class="secondary">設定</button>
+  </div>
+  <div class="card"><div class="tiny">オンライン</div><div id="onlineStatus" class="status warn">接続中…</div></div>
+</section>
+
+<section id="pageSettings" class="hidden">
+ <div class="topbar"><h1>設定</h1><button class="secondary back" data-back>戻る</button></div>
+ <div class="card">
+  <div class="settingTitle">プレイヤー</div>
+  <div class="profile"><div id="avatarPreview" class="avatar">?</div><div class="grow"><input id="nameInput" maxlength="16" placeholder="名前"><input id="avatarInput" type="file" accept="image/*" style="margin-top:8px"></div></div>
+  <button id="avatarRemove" class="secondary" style="margin-top:9px">アイコンを解除</button>
+  <div class="settingGroup"><div class="settingTitle">サウンド</div>
+   <div class="soundLine"><button id="bgmMute" class="soundIcon">🔊</button><input id="bgmRange" type="range" min="0" max="100" value="70"><div id="bgmVal">70%</div></div>
+   <div class="soundLine"><button id="seMute" class="soundIcon">🔊</button><input id="seRange" type="range" min="0" max="100" value="80"><div id="seVal">80%</div></div>
+   <div class="tiny">音源は後から追加。現在は設定値のみ保存します。</div>
+  </div>
+  <div class="settingGroup"><button id="creditBtn" class="secondary">クレジット</button><div id="creditBox" class="credit hidden">制作：仲間六夜 feat. ChatGPT\nBGM：後日追加\nSE：後日追加\n背景：後日追加</div></div>
+ </div>
+</section>
+
+<section id="pageRoom" class="hidden">
+ <div class="topbar"><h1 id="roomTitle">ルーム</h1><button class="secondary back" data-back>戻る</button></div>
+ <div class="card">
+  <div id="roomPrompt" class="sub"></div>
+  <input id="passInput" maxlength="8" placeholder="合言葉（1〜8文字）" autocomplete="off">
+  <div class="tiny" style="margin-top:6px">日本語・英数字・ @ . _ - + / が使用可。英字は大文字小文字を区別。</div>
+  <button id="roomAction">決定</button>
+  <div id="roomFound" class="hidden"><div class="choice"><button id="participateBtn">参加</button><button id="spectateBtn" class="secondary">観戦</button></div></div>
+ </div>
+</section>
+
+<section id="pageLobby" class="hidden">
+ <div class="topbar"><h1>対戦ルーム</h1><button id="leaveLobby" class="secondary back">退出</button></div>
+ <div class="card"><div class="tiny">合言葉</div><div id="lobbyPass" class="roomCode"></div><div id="lobbyState" class="sub"></div><div id="lobbyPlayers" class="players"></div><button id="startMatch" class="hidden">対戦開始</button></div>
+</section>
+
+<section id="pageGame" class="hidden">
+ <div class="topbar"><div><div id="gameModeLabel" class="tiny"></div><div id="gamePlayerName" style="font-weight:900"></div></div><button id="quitGame" class="secondary back">終了</button></div>
+ <div class="hud"><div><div class="tiny">SCORE</div><div id="scoreEl" class="score">0</div><div id="bestEl" class="tiny"></div></div><div><div class="tiny">残り時間</div><div id="timerEl" class="timer">--:--</div><div id="boardIndexEl" class="tiny" style="text-align:right">第1盤面</div></div></div>
+ <div id="missionEl" class="mission"></div>
+ <div id="mainBoard" class="board" aria-label="盤面"></div>
+ <div id="boardNote" class="boardNote">1回タップで選択、もう一度タップで消去</div>
+ <button id="nextBoardBtn" class="nextBtn hidden"></button>
+ <div id="opponentArea" class="miniWrap hidden"><div class="tiny">相手の盤面（リアルタイム）</div><div id="opponentBoard" class="miniBoard"></div><div id="opponentMeta" class="oppMeta"></div></div>
+</section>
+
+<section id="pageSpectate" class="hidden">
+ <div class="topbar"><h1>観戦</h1><button id="leaveSpectate" class="secondary back">退出</button></div>
+ <div id="spectateMission" class="mission"></div>
+ <div id="spectateMain" class="spectateMain"><div id="spectateBigMeta" class="oppMeta"></div><div id="spectateBigBoard" class="board"></div></div>
+ <div class="tiny" style="margin:9px 0 5px">盤面をタップすると大画面を切り替え</div><div id="spectateGrid" class="spectateGrid"></div>
+</section>
+
+<section id="pageResult" class="hidden">
+ <h1>リザルト</h1><div id="resultRows" class="resultRows"></div><button id="resultTop">トップへ</button>
+</section>
+<div id="toast" class="toast">準備中…</div>
+</div>
+
+<script src="js/config.js?v=0.2.0"></script>
+<script src="js/app.js?v=0.2.0"></script>
+</body></html>
