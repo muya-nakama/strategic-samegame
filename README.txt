@@ -33,3 +33,9 @@ v1.02 追加:
 - 待機ルーム参加者を3列表示
 - 実操作チュートリアル
 - 消去/落下/左詰めアニメーション
+
+
+[v1.02 board pool rebuild]
+- Rebuilt 100 full-clearable boards.
+- Removed obvious 2-cell tiling / striped solvable layouts.
+- Each board has a verified clear route, but random legal move sequences can still fail.
