@@ -39,3 +39,10 @@ v1.02 追加:
 - Rebuilt 100 full-clearable boards.
 - Removed obvious 2-cell tiling / striped solvable layouts.
 - Each board has a verified clear route, but random legal move sequences can still fail.
+
+
+[逆算SEED100版]
+- 空盤面から逆算して生成した合格SEEDを100件収録。
+- 中段差し込み・押し上げを使用。
+- 単純な固定方針で全消しできる盤面は不採用。
+- dev/board-seed-report.json は内部検証用でゲーム画面には表示されません。
