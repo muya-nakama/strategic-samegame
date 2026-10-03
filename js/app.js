@@ -66,25 +66,64 @@ function buildCollapsePlan(src,group){
   liveCols.forEach((oldX,newX)=>{for(let y=0;y<CFG.ROWS;y++){const o=down[y][oldX];if(o){fin[y][newX]=o.v;const p=pos.get(o.id);p.finalX=newX}}});
   return{finalBoard:fin,pos};
 }
+function gridStep(el){
+  const a=el.querySelector('.cell[data-y="0"][data-x="0"]')?.getBoundingClientRect();
+  const b=el.querySelector('.cell[data-y="0"][data-x="1"]')?.getBoundingClientRect();
+  const c=el.querySelector('.cell[data-y="1"][data-x="0"]')?.getBoundingClientRect();
+  return{
+    x:a&&b?Math.abs(b.left-a.left):(el.clientWidth/CFG.COLS),
+    y:a&&c?Math.abs(c.top-a.top):(el.clientHeight/CFG.ROWS)
+  };
+}
+function renderMotionPhase(el,b,plan,phase){
+  renderBoard(el,b,false,false);
+  const step=gridStep(el);
+  let moved=false;
+  for(const [id,p] of plan.pos){
+    const [oy,ox]=id.split(',').map(Number);
+    if(phase==='drop'){
+      const dy=p.dropY-oy;
+      if(dy<=0)continue;
+      const d=el.querySelector(`.cell[data-y="${p.dropY}"][data-x="${p.dropX}"]`);
+      if(!d)continue;
+      // Monpatch方式：移動後のマスに描画し、元の位置ぶん上へ戻してから0へ落とす。
+      d.style.setProperty('--sg-from-y',`${-dy*step.y}px`);
+      d.classList.add('sgFalling');
+      moved=true;
+    }else if(phase==='shift'){
+      const dx=p.dropX-p.finalX;
+      if(dx<=0)continue;
+      const d=el.querySelector(`.cell[data-y="${p.finalY}"][data-x="${p.finalX}"]`);
+      if(!d)continue;
+      // 最終位置に描画し、元の列ぶん右へ戻してから左へ0まで詰める。
+      d.style.setProperty('--sg-from-x',`${dx*step.x}px`);
+      d.classList.add('sgShifting');
+      moved=true;
+    }
+  }
+  return moved;
+}
 async function animateBoardMove(el,src,group){
   const cells=[...el.querySelectorAll('.cell')];
   const byKey=new Map(cells.map(d=>[d.dataset.y+','+d.dataset.x,d]));
   group.forEach(([y,x])=>byKey.get(y+','+x)?.classList.add('removing'));
   el.classList.add('animating');
   await sleep(120);await sleep(30);
+
   const plan=buildCollapsePlan(src,group);
-  // Grid pitch must be measured from fixed neighbouring cells.
-  // Using the first visible block breaks as soon as upper rows become empty,
-  // causing wrong/negative Y distances and bizarre diagonal/sideways motion.
-  const r00=byKey.get('0,0')?.getBoundingClientRect();
-  const r01=byKey.get('0,1')?.getBoundingClientRect();
-  const r10=byKey.get('1,0')?.getBoundingClientRect();
-  const stepX=r00&&r01?r01.left-r00.left:(el.clientWidth/CFG.COLS);
-  const stepY=r00&&r10?r10.top-r00.top:(el.clientHeight/CFG.ROWS);
-  for(const [id,p] of plan.pos){const d=byKey.get(id);if(!d)continue;const [oy,ox]=id.split(',').map(Number);d.classList.add('moving');d.style.transitionDuration='200ms';d.style.transform=`translate(${(p.dropX-ox)*stepX}px,${(p.dropY-oy)*stepY}px)`}
-  await sleep(200);await sleep(30);
-  for(const [id,p] of plan.pos){const d=byKey.get(id);if(!d)continue;const [oy,ox]=id.split(',').map(Number);d.style.transitionDuration='180ms';d.style.transform=`translate(${(p.finalX-ox)*stepX}px,${(p.finalY-oy)*stepY}px)`}
-  await sleep(180);
+  const downBoard=Array.from({length:CFG.ROWS},()=>Array(CFG.COLS).fill(null));
+  for(const [id,p] of plan.pos){
+    const [oy,ox]=id.split(',').map(Number);
+    downBoard[p.dropY][p.dropX]=src[oy][ox];
+  }
+
+  const dropped=renderMotionPhase(el,downBoard,plan,'drop');
+  if(dropped)await sleep(200);
+  await sleep(30);
+
+  const shifted=renderMotionPhase(el,plan.finalBoard,plan,'shift');
+  if(shifted)await sleep(180);
+
   el.classList.remove('animating');
   return plan.finalBoard;
 }
