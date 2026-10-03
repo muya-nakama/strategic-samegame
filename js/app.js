@@ -73,11 +73,14 @@ async function animateBoardMove(el,src,group){
   el.classList.add('animating');
   await sleep(120);await sleep(30);
   const plan=buildCollapsePlan(src,group);
-  const first=cells.find(d=>!d.classList.contains('empty'))||cells[0];
-  const r0=first?.getBoundingClientRect();
-  const rRight=byKey.get('0,1')?.getBoundingClientRect(),rDown=byKey.get('1,0')?.getBoundingClientRect();
-  const stepX=rRight&&r0?rRight.left-r0.left:(el.clientWidth/CFG.COLS);
-  const stepY=rDown&&r0?rDown.top-r0.top:(el.clientHeight/CFG.ROWS);
+  // Grid pitch must be measured from fixed neighbouring cells.
+  // Using the first visible block breaks as soon as upper rows become empty,
+  // causing wrong/negative Y distances and bizarre diagonal/sideways motion.
+  const r00=byKey.get('0,0')?.getBoundingClientRect();
+  const r01=byKey.get('0,1')?.getBoundingClientRect();
+  const r10=byKey.get('1,0')?.getBoundingClientRect();
+  const stepX=r00&&r01?r01.left-r00.left:(el.clientWidth/CFG.COLS);
+  const stepY=r00&&r10?r10.top-r00.top:(el.clientHeight/CFG.ROWS);
   for(const [id,p] of plan.pos){const d=byKey.get(id);if(!d)continue;const [oy,ox]=id.split(',').map(Number);d.classList.add('moving');d.style.transitionDuration='200ms';d.style.transform=`translate(${(p.dropX-ox)*stepX}px,${(p.dropY-oy)*stepY}px)`}
   await sleep(200);await sleep(30);
   for(const [id,p] of plan.pos){const d=byKey.get(id);if(!d)continue;const [oy,ox]=id.split(',').map(Number);d.style.transitionDuration='180ms';d.style.transform=`translate(${(p.finalX-ox)*stepX}px,${(p.finalY-oy)*stepY}px)`}
