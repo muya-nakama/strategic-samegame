@@ -6,8 +6,8 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>戦略さめがめ v1.01</title>
-<link rel="stylesheet" href="css/style.css?v=1.01.0">
+<title>戦略さめがめ v1.02</title>
+<link rel="stylesheet" href="css/style.css?v=1.02.0">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
@@ -15,16 +15,19 @@
 <body>
 <div class="app">
 <section id="pageTop">
-  <h1>戦略さめがめ <span class="tiny">v1.01</span></h1>
-  <div class="sub">共通盤面・残ブロック減点・共通ミッションで競う戦略型さめがめ。</div>
-  <div id="topProfile" class="card profile compactProfile"></div>
-  <div class="menu">
+  <h1>戦略さめがめ <span class="tiny">v1.02</span></h1>
+  <div class="sub topSub">共通盤面・残ブロック減点・共通ミッション</div>
+  <div class="topIdentity">
+    <div id="topProfile" class="profile compactProfile"></div>
+    <div id="onlineStatus" class="status warn">● 接続中…</div>
+  </div>
+  <div class="menu compactMenu">
     <button id="singleBtn">シングルプレイ</button>
     <button id="createBtn">ルーム作成</button>
     <button id="joinBtn">ルーム参加</button>
+    <button id="tutorialBtn">チュートリアル</button>
     <button id="settingsBtn" class="secondary">設定</button>
   </div>
-  <div class="card slimCard"><div class="tiny">オンライン</div><div id="onlineStatus" class="status warn">接続中…</div></div>
 </section>
 
 <section id="pageSettings" class="hidden">
@@ -35,6 +38,19 @@
   <button id="avatarRemove" class="secondary smallBtn" type="button">アイコンを解除</button>
   <div class="settingGroup"><div class="settingTitle">サウンド</div><div id="settingsSound"></div></div>
   <div class="settingGroup"><button id="creditBtn" class="secondary">クレジット</button><div id="creditBox" class="credit hidden">制作：仲間六夜 feat. ChatGPT\nBGM：後日追加\nSE：後日追加\n背景：後日追加</div></div>
+ </div>
+</section>
+
+
+<section id="pageTutorial" class="hidden">
+ <div class="topbar"><h1>チュートリアル</h1><button id="tutorialBack" class="secondary back" type="button">戻る</button></div>
+ <div class="card tutorialCard">
+  <div id="tutorialStep" class="tiny">STEP 1 / 3</div>
+  <div id="tutorialText" class="tutorialText">同じ色が2個以上つながった場所を選びます。</div>
+  <div id="tutorialGuide" class="tutorialGuide">↓ ここをタップ</div>
+  <div id="tutorialBoard" class="board tutorialBoard" aria-label="チュートリアル盤面"></div>
+  <div id="tutorialNote" class="boardNote">1回目で選択、2回目で消去します</div>
+  <button id="tutorialNext" class="hidden" type="button">次へ</button>
  </div>
 </section>
 
@@ -114,7 +130,7 @@
  </div>
 </div>
 
-<script src="js/config.js?v=1.01.0"></script>
-<script src="js/boards.js?v=1.01.0"></script>
-<script src="js/app.js?v=1.01.0"></script>
+<script src="js/config.js?v=1.02.0"></script>
+<script src="js/boards.js?v=1.02.0"></script>
+<script src="js/app.js?v=1.02.0"></script>
 </body></html>

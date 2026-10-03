@@ -1,7 +1,7 @@
 (()=>{
 'use strict';
 const $=id=>document.getElementById(id);
-const pages=['Top','Settings','Room','Lobby','Game','Spectate','Result'];
+const pages=['Top','Settings','Tutorial','Room','Lobby','Game','Spectate','Result'];
 const K={name:'sg_player_name',avatar:'sg_player_avatar',bgm:'sg_bgm',se:'sg_se',bgmPrev:'sg_bgm_prev',sePrev:'sg_se_prev',best:'sg_best'};
 const colorNames=['赤','青','緑','黄','紫'];
 const ROOM_ROOT='samegameRooms';
@@ -14,7 +14,7 @@ function getName(){return (localStorage.getItem(K.name)||'Player').trim().slice(
 function getAvatar(){return localStorage.getItem(K.avatar)||''}
 function initials(n){return Array.from(n||'?').slice(0,2).join('')}
 function avatarHTML(name,av,cls='avatar'){return `<div class="${cls}">${av?`<img src="${av}" alt="">`:esc(initials(name))}</div>`}
-function syncTopProfile(){$('topProfile').innerHTML=avatarHTML(getName(),getAvatar())+`<div><div class="tiny">PLAYER</div><div class="profileName">${esc(getName())}</div></div>`}
+function syncTopProfile(){$('topProfile').innerHTML=avatarHTML(getName(),getAvatar())+`<div><div class="profileName">${esc(getName())}</div></div>`}
 
 // ===== sound settings =====
 function soundMarkup(kind){const label=kind==='bgm'?'BGM':'SE';return `<div class="settingTitle">${label}</div><div class="soundLine"><button id="${kind}Mute" class="soundIcon" type="button">🔊</button><input id="${kind}Range" type="range" min="0" max="100" value="70"><div class="soundValueWrap"><input id="${kind}Number" class="soundNumber" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="3" aria-label="${label}音量"><span class="percentMark">%</span></div></div>`}
@@ -50,27 +50,102 @@ function missionText(m){return m?`ミッション：${colorNames[m.color]}を${m
 // ===== game state =====
 let mode='single',seed='',boardIndex=1,board=[],mission=null,score=0,selected=[],startAt=0,timerId=null,finished=false;
 let fbReady=false,myUid='',currentRoomKey='',currentRoom=null,currentPass='',roomUnsub=null,chatUnsub=null,spectating=false,spectateFocus='',returnedToLobby=false;
-function renderBoard(el,b,mini=false,clickable=false){el.innerHTML='';for(let y=0;y<CFG.ROWS;y++)for(let x=0;x<CFG.COLS;x++){const v=b?.[y]?.[x]??null,d=document.createElement(clickable?'button':'div');d.className=(mini?'miniCell ':'cell ')+(v==null?'empty':'c'+v);if(!mini&&selected.some(([a,c])=>a===y&&c===x))d.classList.add('sel');if(clickable&&v!=null){d.type='button';d.dataset.y=y;d.dataset.x=x;d.addEventListener('click',cellClick)}el.appendChild(d)}}
+function renderBoard(el,b,mini=false,clickable=false,clickHandler=cellClick){el.innerHTML='';for(let y=0;y<CFG.ROWS;y++)for(let x=0;x<CFG.COLS;x++){const v=b?.[y]?.[x]??null,d=document.createElement(clickable?'button':'div');d.className=(mini?'miniCell ':'cell ')+(v==null?'empty':'c'+v);d.dataset.y=y;d.dataset.x=x;if(!mini&&el.id==='mainBoard'&&selected.some(([a,c])=>a===y&&c===x))d.classList.add('sel');if(clickable&&v!=null){d.type='button';d.addEventListener('click',clickHandler)}el.appendChild(d)}}
+let inputLocked=false;
+function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
+function buildCollapsePlan(src,group){
+  const gset=new Set(group.map(([y,x])=>y+','+x));
+  const lab=src.map((row,y)=>row.map((v,x)=>v==null?null:{v,id:y+','+x,oy:y,ox:x}));
+  for(const k of gset){const [y,x]=k.split(',').map(Number);lab[y][x]=null}
+  const down=Array.from({length:CFG.ROWS},()=>Array(CFG.COLS).fill(null));
+  for(let x=0;x<CFG.COLS;x++){let ty=CFG.ROWS-1;for(let y=CFG.ROWS-1;y>=0;y--)if(lab[y][x]){down[ty][x]=lab[y][x];ty--}}
+  const liveCols=[];for(let x=0;x<CFG.COLS;x++)if(down.some(r=>r[x]))liveCols.push(x);
+  const fin=Array.from({length:CFG.ROWS},()=>Array(CFG.COLS).fill(null));
+  const pos=new Map();
+  for(let y=0;y<CFG.ROWS;y++)for(let x=0;x<CFG.COLS;x++){const o=down[y][x];if(o)pos.set(o.id,{dropY:y,dropX:x,finalY:y,finalX:x})}
+  liveCols.forEach((oldX,newX)=>{for(let y=0;y<CFG.ROWS;y++){const o=down[y][oldX];if(o){fin[y][newX]=o.v;const p=pos.get(o.id);p.finalX=newX}}});
+  return{finalBoard:fin,pos};
+}
+async function animateBoardMove(el,src,group){
+  const cells=[...el.querySelectorAll('.cell')];
+  const byKey=new Map(cells.map(d=>[d.dataset.y+','+d.dataset.x,d]));
+  group.forEach(([y,x])=>byKey.get(y+','+x)?.classList.add('removing'));
+  el.classList.add('animating');
+  await sleep(120);await sleep(30);
+  const plan=buildCollapsePlan(src,group);
+  const first=cells.find(d=>!d.classList.contains('empty'))||cells[0];
+  const r0=first?.getBoundingClientRect();
+  const rRight=byKey.get('0,1')?.getBoundingClientRect(),rDown=byKey.get('1,0')?.getBoundingClientRect();
+  const stepX=rRight&&r0?rRight.left-r0.left:(el.clientWidth/CFG.COLS);
+  const stepY=rDown&&r0?rDown.top-r0.top:(el.clientHeight/CFG.ROWS);
+  for(const [id,p] of plan.pos){const d=byKey.get(id);if(!d)continue;const [oy,ox]=id.split(',').map(Number);d.classList.add('moving');d.style.transitionDuration='200ms';d.style.transform=`translate(${(p.dropX-ox)*stepX}px,${(p.dropY-oy)*stepY}px)`}
+  await sleep(200);await sleep(30);
+  for(const [id,p] of plan.pos){const d=byKey.get(id);if(!d)continue;const [oy,ox]=id.split(',').map(Number);d.style.transitionDuration='180ms';d.style.transform=`translate(${(p.finalX-ox)*stepX}px,${(p.finalY-oy)*stepY}px)`}
+  await sleep(180);
+  el.classList.remove('animating');
+  return plan.finalBoard;
+}
 function renderSelfProfile(){$('selfMiniProfile').innerHTML=avatarHTML(getName(),getAvatar())+`<div><div class="name">${esc(getName())}</div><div class="tiny">${mode==='single'?'SINGLE':'MULTI'}</div></div>`}
 function renderGame(){renderBoard($('mainBoard'),board,false,true);$('scoreEl').textContent=score.toLocaleString();$('boardIndexEl').textContent=`ステージ${boardIndex}`;$('missionEl').textContent=missionText(mission);$('missionEl').classList.toggle('done',!!mission?.done);$('bestEl').textContent=mode==='single'?`BEST ${(+(localStorage.getItem(K.best)||0)).toLocaleString()}`:'';checkStuck();renderSelfProfile();if(mode==='multi')pushState()}
-function cellClick(e){if(finished)return;const y=+e.currentTarget.dataset.y,x=+e.currentTarget.dataset.x,g=groupAt(board,y,x);if(g.length<2){selected=[];$('boardNote').textContent='2個以上つながった色を選択';renderBoard($('mainBoard'),board,false,true);return}const same=selected.length===g.length&&g.every(([a,b])=>selected.some(([c,d])=>a===c&&b===d));if(!same){selected=g;$('boardNote').textContent=`${g.length}個選択　もう一度タップで消去（+${scoreFor(g.length)}点）`;renderBoard($('mainBoard'),board,false,true);return}const color=board[y][x];g.forEach(([a,b])=>board[a][b]=null);score+=scoreFor(g.length);if(!mission.done&&color===mission.color&&g.length>=mission.count){mission.done=true;score+=mission.bonus;toast(`ミッション達成 +${mission.bonus}点`)}collapse(board);selected=[];$('boardNote').textContent=`${g.length}個消去`;renderGame()}
+async function cellClick(e){
+  if(finished||inputLocked)return;
+  const y=+e.currentTarget.dataset.y,x=+e.currentTarget.dataset.x,g=groupAt(board,y,x);
+  if(g.length<2){selected=[];$('boardNote').textContent='2個以上つながった色を選択';renderBoard($('mainBoard'),board,false,true);return}
+  const same=selected.length===g.length&&g.every(([a,b])=>selected.some(([c,d])=>a===c&&b===d));
+  if(!same){selected=g;$('boardNote').textContent=`${g.length}個選択　もう一度タップで消去（+${scoreFor(g.length)}点）`;renderBoard($('mainBoard'),board,false,true);return}
+  inputLocked=true;
+  const color=board[y][x],oldBoard=board.map(r=>r.slice());
+  score+=scoreFor(g.length);
+  if(!mission.done&&color===mission.color&&g.length>=mission.count){mission.done=true;score+=mission.bonus;toast(`ミッション達成 +${mission.bonus}点`)}
+  board=await animateBoardMove($('mainBoard'),oldBoard,g);
+  selected=[];$('boardNote').textContent=`${g.length}個消去`;
+  renderGame();inputLocked=false;
+}
 function checkStuck(){const rem=remaining(board),stuck=rem===0||!hasMove(board);$('nextBoardBtn').classList.toggle('hidden',!stuck||finished);if(stuck&&!finished){const pen=penaltyFor(rem);$('nextBoardBtn').textContent=`次の盤面へ（残ブロック減点 ${pen===0?'0':'-'+pen}点）`;$('boardNote').textContent=rem===0?'全消し！ 次の盤面へ進めます':`消せる組み合わせなし：残り${rem}個`}}
 function nextBoard(){if(finished)return;const rem=remaining(board);score=Math.max(0,score-penaltyFor(rem));boardIndex++;board=generateBoard(seed,boardIndex);mission=generateMission(seed,boardIndex,board);selected=[];renderGame();toast(`ステージ${boardIndex}へ`)}
 function startGame(opts){mode=opts.mode;seed=opts.seed||crypto.randomUUID();boardIndex=opts.boardIndex||1;board=generateBoard(seed,boardIndex);mission=generateMission(seed,boardIndex,board);score=0;selected=[];finished=false;returnedToLobby=false;startAt=opts.startAt||Date.now();show('Game');clearToast();$('opponentArea').classList.toggle('hidden',mode!=='multi');renderGame();clearInterval(timerId);timerId=setInterval(tick,250);tick()}
 function tick(){const left=Math.max(0,CFG.TIME_LIMIT_SEC-Math.floor((Date.now()-startAt)/1000));$('timerEl').textContent=`${Math.floor(left/60)}:${String(left%60).padStart(2,'0')}`;if(left<=0)finishPlayer()}
 function finishPlayer(){if(finished)return;finished=true;clearInterval(timerId);selected=[];$('nextBoardBtn').classList.add('hidden');$('boardNote').textContent=mode==='multi'?'プレイ終了。ほかのプレイヤーを待っています':'終了';if(mode==='single'){const best=+(localStorage.getItem(K.best)||0);if(score>best)localStorage.setItem(K.best,String(score));showResult([{name:getName(),avatar:getAvatar(),score,boardIndex}],false)}else if(currentRoomKey){firebase.database().ref(`${ROOM_ROOT}/${currentRoomKey}/players/${myUid}`).update({score,finished:true,status:'集計待ち',board,boardIndex,mission,updatedAt:firebase.database.ServerValue.TIMESTAMP})}}
 
+// ===== tutorial =====
+let tutorialIndex=0,tutorialBoard=[],tutorialSelected=false,tutorialBusy=false;
+function emptyBoard(){return Array.from({length:CFG.ROWS},()=>Array(CFG.COLS).fill(null))}
+function tutorialSetup(step){
+  tutorialIndex=step;tutorialSelected=false;tutorialBusy=false;$('tutorialNext').classList.add('hidden');
+  const b=emptyBoard();
+  if(step===0){b[10][4]=0;b[11][4]=0;b[11][5]=0;$('tutorialStep').textContent='STEP 1 / 3';$('tutorialText').textContent='つながった同じ色を選び、もう一度タップして消します。';$('tutorialGuide').textContent='↓ ここをタップ';$('tutorialNote').textContent='まず赤いかたまりを1回タップ'}
+  if(step===1){b[8][4]=2;b[9][4]=1;b[10][4]=1;b[11][4]=1;b[7][4]=3;$('tutorialStep').textContent='STEP 2 / 3';$('tutorialText').textContent='下のブロックを消すと、上のブロックが落下します。';$('tutorialGuide').textContent='↓ ここをタップ';$('tutorialNote').textContent='青い3個を消して落下を確認'}
+  if(step===2){for(let y=9;y<12;y++)b[y][3]=4;for(let y=9;y<12;y++){b[y][4]=0;b[y][5]=2}$('tutorialStep').textContent='STEP 3 / 3';$('tutorialText').textContent='列が空になると、右側の列が左へ詰まります。';$('tutorialGuide').textContent='↓ ここをタップ';$('tutorialNote').textContent='紫の列を消して左詰めを確認'}
+  tutorialBoard=b;renderTutorial();
+}
+function tutorialTargetGroup(){if(tutorialIndex===0)return groupAt(tutorialBoard,11,4);if(tutorialIndex===1)return groupAt(tutorialBoard,10,4);return groupAt(tutorialBoard,10,3)}
+function renderTutorial(){
+  renderBoard($('tutorialBoard'),tutorialBoard,false,true,tutorialClick);
+  const tg=tutorialTargetGroup();for(const [y,x] of tg){$('tutorialBoard').querySelector(`[data-y="${y}"][data-x="${x}"]`)?.classList.add('tutorialTarget');}
+  if(tutorialSelected)for(const [y,x] of tg){$('tutorialBoard').querySelector(`[data-y="${y}"][data-x="${x}"]`)?.classList.add('sel')}
+}
+async function tutorialClick(e){
+  if(tutorialBusy)return;const y=+e.currentTarget.dataset.y,x=+e.currentTarget.dataset.x,tg=tutorialTargetGroup();
+  if(!tg.some(([a,b])=>a===y&&b===x)){toast('光っているブロックをタップしてください',1200);return}
+  if(!tutorialSelected){tutorialSelected=true;$('tutorialGuide').textContent='↓ もう一度ここをタップ';$('tutorialNote').textContent='選択できました。もう一度タップで消去';renderTutorial();return}
+  tutorialBusy=true;const old=tutorialBoard.map(r=>r.slice());tutorialBoard=await animateBoardMove($('tutorialBoard'),old,tg);tutorialSelected=false;renderTutorial();$('tutorialGuide').textContent='✓ 確認できました';
+  if(tutorialIndex===0)$('tutorialNote').textContent='同じ色の塊は2回タップで消します';
+  if(tutorialIndex===1)$('tutorialNote').textContent='上のブロックが下へ落ちました';
+  if(tutorialIndex===2)$('tutorialNote').textContent='空いた列の右側が左へ移動しました';
+  $('tutorialNext').textContent=tutorialIndex===2?'チュートリアル終了':'次へ';$('tutorialNext').classList.remove('hidden');tutorialBusy=false;
+}
+function startTutorial(){show('Tutorial');clearToast();tutorialSetup(0)}
 // ===== firebase =====
-async function initFirebase(){try{if(!firebase.apps.length)firebase.initializeApp(firebaseConfig);const cred=await firebase.auth().signInAnonymously();myUid=cred.user.uid;fbReady=true;$('onlineStatus').textContent='オンライン';$('onlineStatus').className='status ok';toast('準備完了')}catch(e){console.error(e);$('onlineStatus').textContent='Firebase接続失敗';$('onlineStatus').className='status warn';toast('オンライン機能に接続できません')}}
+async function initFirebase(){try{if(!firebase.apps.length)firebase.initializeApp(firebaseConfig);const cred=await firebase.auth().signInAnonymously();myUid=cred.user.uid;fbReady=true;$('onlineStatus').textContent='● オンライン';$('onlineStatus').className='status ok';toast('準備完了')}catch(e){console.error(e);$('onlineStatus').textContent='● 接続失敗';$('onlineStatus').className='status warn';toast('オンライン機能に接続できません')}}
 async function passHash(s){const data=new TextEncoder().encode(s),h=await crypto.subtle.digest('SHA-256',data);return Array.from(new Uint8Array(h)).map(b=>b.toString(16).padStart(2,'0')).join('')}
 function validPass(s){const a=Array.from(s);if(a.length<1||a.length>8)return false;return /^[A-Za-z0-9@._+\-/\u3040-\u309F\u30A0-\u30FF\u3400-\u4DBF\u4E00-\u9FFF]+$/u.test(s)}
 function playerData(){return{name:getName(),avatar:getAvatar(),score:0,finished:false,returned:false,status:'待機中',board:null,boardIndex:1,mission:null,joinedAt:firebase.database.ServerValue.TIMESTAMP}}
-async function createRoom(pass){if(!fbReady)throw Error('オンライン未接続');const key=await passHash(pass),ref=firebase.database().ref(`${ROOM_ROOT}/${key}`),snap=await ref.once('value');if(snap.exists())throw Error('同じ合言葉のルームが使用中です');const s=crypto.randomUUID();await ref.set({version:'1.01',status:'waiting',hostUid:myUid,seed:s,timeLimit:CFG.TIME_LIMIT_SEC,passLabel:pass,createdAt:firebase.database.ServerValue.TIMESTAMP,players:{[myUid]:playerData()}});enterLobby(key,pass)}
+async function createRoom(pass){if(!fbReady)throw Error('オンライン未接続');const key=await passHash(pass),ref=firebase.database().ref(`${ROOM_ROOT}/${key}`),snap=await ref.once('value');if(snap.exists())throw Error('同じ合言葉のルームが使用中です');const s=crypto.randomUUID();await ref.set({version:'1.02',status:'waiting',hostUid:myUid,seed:s,timeLimit:CFG.TIME_LIMIT_SEC,passLabel:pass,createdAt:firebase.database.ServerValue.TIMESTAMP,players:{[myUid]:playerData()}});enterLobby(key,pass)}
 async function findRoom(pass){const key=await passHash(pass),snap=await firebase.database().ref(`${ROOM_ROOT}/${key}`).once('value');if(!snap.exists())throw Error('ルームが見つかりません');return{key,data:snap.val(),pass}}
 async function joinRoom(key,pass){const ref=firebase.database().ref(`${ROOM_ROOT}/${key}`),snap=await ref.once('value'),r=snap.val();if(!r||r.status!=='waiting')throw Error('参加受付中ではありません');const count=Object.keys(r.players||{}).length;if(count>=CFG.MAX_PLAYERS)throw Error(`参加枠は最大${CFG.MAX_PLAYERS}人です。観戦してください`);await ref.child(`players/${myUid}`).set(playerData());enterLobby(key,pass)}
 function enterLobby(key,pass){currentRoomKey=key;currentPass=pass||currentPass;returnedToLobby=false;show('Lobby');clearToast();$('lobbyPass').textContent=currentPass||'参加済み';subscribeRoom();subscribeChat()}
 function subscribeRoom(){if(roomUnsub){roomUnsub();roomUnsub=null}const ref=firebase.database().ref(`${ROOM_ROOT}/${currentRoomKey}`),cb=s=>{const r=s.val();if(!r){toast('ルームが終了しました');cleanupRoom();show('Top');return}currentRoom=r;renderLobby(r);if(spectating){renderSpectate(r);if(r.status==='result')showSharedResult(r,true);return}if(r.status==='playing'&&!finished&&mode!=='multi'){startGame({mode:'multi',seed:r.seed,startAt:r.startAt})}if(r.status==='playing'&&mode==='multi')renderOpponents();if(r.status==='result'&&!returnedToLobby)showSharedResult(r,false);if(r.status==='waiting')returnedToLobby=false};ref.on('value',cb);roomUnsub=()=>ref.off('value',cb)}
-function renderLobby(r){const ps=Object.entries(r.players||{}).sort((a,b)=>(a[1].joinedAt||0)-(b[1].joinedAt||0));$('lobbyPass').textContent=currentPass||r.passLabel||'参加済み';$('lobbyState').textContent=r.status==='waiting'?`参加者 ${ps.length}/${CFG.MAX_PLAYERS}`:r.status==='result'?'結果確認中':r.status;$('lobbyPlayers').innerHTML=ps.map(([uid,p])=>`<div class="playerRow">${avatarHTML(p.name,p.avatar)}<div class="grow"><b>${esc(p.name)}</b><div class="tiny">${uid===r.hostUid?'ホスト':'参加者'}${p.returned?' / ルーム復帰済み':''}</div></div></div>`).join('');const host=r.hostUid===myUid;$('startMatch').classList.toggle('hidden',!host||ps.length<2||r.status!=='waiting')}
+function renderLobby(r){const ps=Object.entries(r.players||{}).sort((a,b)=>(a[1].joinedAt||0)-(b[1].joinedAt||0));$('lobbyPass').textContent=currentPass||r.passLabel||'参加済み';$('lobbyState').textContent=r.status==='waiting'?`参加者 ${ps.length}/${CFG.MAX_PLAYERS}`:r.status==='result'?'結果確認中':r.status;$('lobbyPlayers').innerHTML=ps.map(([uid,p])=>`<div class="playerCard">${avatarHTML(p.name,p.avatar)}<b>${esc(p.name)}</b><div class="tiny">${uid===r.hostUid?'ホスト':'参加者'}${p.returned?' / 復帰済み':''}</div></div>`).join('');const host=r.hostUid===myUid;$('startMatch').classList.toggle('hidden',!host||ps.length<2||r.status!=='waiting')}
 async function startMatch(){if(!currentRoomKey||!currentRoom)return;const updates={status:'playing',startAt:Date.now()+3000,seed:crypto.randomUUID(),resultAt:null};Object.keys(currentRoom.players||{}).forEach(uid=>{updates[`players/${uid}/score`]=0;updates[`players/${uid}/finished`]=false;updates[`players/${uid}/returned`]=false;updates[`players/${uid}/status`]='ゲーム中';updates[`players/${uid}/board`]=null;updates[`players/${uid}/boardIndex`]=1;updates[`players/${uid}/mission`]=null});await firebase.database().ref(`${ROOM_ROOT}/${currentRoomKey}`).update(updates);mode='none';toast('3秒後に開始',1800)}
 async function pushState(){if(!currentRoomKey||!myUid||mode!=='multi')return;firebase.database().ref(`${ROOM_ROOT}/${currentRoomKey}/players/${myUid}`).update({score,board,boardIndex,mission,finished:false,status:'ゲーム中',updatedAt:firebase.database.ServerValue.TIMESTAMP}).catch(()=>{})}
 function renderOpponents(){const r=currentRoom;if(!r)return;const others=Object.entries(r.players||{}).filter(([uid])=>uid!==myUid);$('opponentArea').classList.toggle('hidden',others.length===0);const grid=$('opponentGrid');grid.innerHTML='';others.forEach(([uid,p])=>{const card=document.createElement('div');card.className='oppCard';card.innerHTML=`<div class="miniBoard"></div><div class="oppMeta">${avatarHTML(p.name,p.avatar)}<div class="grow"><div class="oppName">${esc(p.name)}</div><div class="oppState">${esc(p.finished?'集計待ち':'ゲーム中')}</div></div><div class="oppScore">${(+p.score||0).toLocaleString()}</div></div>`;renderBoard(card.querySelector('.miniBoard'),p.board||generateBoard(r.seed,p.boardIndex||1),true,false);grid.appendChild(card)})}
@@ -80,8 +155,32 @@ function showResult(arr,returnRoom){show('Result');$('resultRows').innerHTML=arr
 async function returnToLobbyFromResult(){if(!currentRoomKey||spectating){cleanupRoom();show('Top');return}returnedToLobby=true;show('Lobby');clearToast();await firebase.database().ref(`${ROOM_ROOT}/${currentRoomKey}/players/${myUid}`).update({returned:true,status:'待機中'});const snap=await firebase.database().ref(`${ROOM_ROOT}/${currentRoomKey}`).once('value'),r=snap.val();if(r&&r.status==='result'){const ps=Object.values(r.players||{});if(ps.length&&ps.every(p=>p.returned)){const updates={status:'waiting',resultAt:null};Object.keys(r.players||{}).forEach(uid=>{updates[`players/${uid}/finished`]=false;updates[`players/${uid}/returned`]=false;updates[`players/${uid}/status`]='待機中';updates[`players/${uid}/board`]=null;updates[`players/${uid}/mission`]=null});await firebase.database().ref(`${ROOM_ROOT}/${currentRoomKey}`).update(updates)}}}
 
 // ===== chat =====
-function subscribeChat(){if(chatUnsub){chatUnsub();chatUnsub=null}const ref=firebase.database().ref(`${ROOM_ROOT}/${currentRoomKey}/chat`).limitToLast(CFG.CHAT_LIMIT),cb=s=>{const rows=[];s.forEach(ch=>rows.push(ch.val()));$('chatLog').innerHTML=rows.map(m=>`<div class="chatMsg"><b>${esc(m.name)}：</b>${esc(m.text)}</div>`).join('');$('chatLog').scrollTop=$('chatLog').scrollHeight};ref.on('value',cb);chatUnsub=()=>ref.off('value',cb)}
-async function sendChat(text){text=String(text||'').trim().slice(0,80);if(!text||!currentRoomKey)return;await firebase.database().ref(`${ROOM_ROOT}/${currentRoomKey}/chat`).push({uid:myUid,name:getName(),text,at:firebase.database.ServerValue.TIMESTAMP})}
+function subscribeChat(){
+  if(chatUnsub){chatUnsub();chatUnsub=null}
+  const ref=firebase.database().ref(`${ROOM_ROOT}/${currentRoomKey}/chat`).limitToLast(CFG.CHAT_LIMIT);
+  const cb=s=>{
+    const rows=[];
+    s.forEach(ch=>{const v=ch.val();if(v&&typeof v.text==='string')rows.push(v)});
+    const log=$('chatLog');
+    log.innerHTML=rows.map(m=>`<div class="chatMsg"><b>${esc(m.name)}：</b>${esc(m.text)}</div>`).join('');
+    log.scrollTop=log.scrollHeight;
+  };
+  ref.on('value',cb);
+  chatUnsub=()=>ref.off('value',cb);
+}
+let chatSending=false;
+async function sendChat(text){
+  text=String(text||'').trim().slice(0,80);
+  if(!text||!currentRoomKey||chatSending)return false;
+  chatSending=true;
+  try{
+    const msgRef=firebase.database().ref(`${ROOM_ROOT}/${currentRoomKey}/chat`).push();
+    await msgRef.set({uid:myUid,name:getName(),text,at:firebase.database.ServerValue.TIMESTAMP});
+    return true;
+  }finally{
+    chatSending=false;
+  }
+}
 
 // ===== spectate =====
 function startSpectate(key,pass){currentRoomKey=key;currentPass=pass||'';spectating=true;show('Spectate');clearToast();subscribeRoom()}
@@ -101,6 +200,9 @@ $('joinBtn').onclick=()=>{roomIntent='join';foundRoom=null;$('roomTitle').textCo
 $('roomAction').onclick=async()=>{const p=$('passInput').value;if(!validPass(p)){toast('合言葉は1〜8文字。絵文字・空白・未許可記号は使えません');return}try{if(roomIntent==='create')await createRoom(p);else{foundRoom=await findRoom(p);$('roomFound').classList.remove('hidden');toast('ルームが見つかりました',1800)}}catch(e){toast(e.message||String(e))}};
 $('participateBtn').onclick=async()=>{try{await joinRoom(foundRoom.key,foundRoom.pass)}catch(e){toast(e.message||String(e))}};
 $('spectateBtn').onclick=()=>startSpectate(foundRoom.key,foundRoom.pass);
+$('tutorialBtn').onclick=startTutorial;
+$('tutorialBack').onclick=()=>{show('Top');clearToast()};
+$('tutorialNext').onclick=()=>{if(tutorialIndex>=2){show('Top');clearToast()}else tutorialSetup(tutorialIndex+1)};
 $('settingsBtn').onclick=()=>{setupSettings();show('Settings');clearToast()};
 document.querySelectorAll('[data-back]').forEach(b=>b.onclick=()=>{show('Top');syncTopProfile();clearToast()});
 $('nameInput').addEventListener('input',()=>{const n=$('nameInput').value.trim().slice(0,16);if(n)localStorage.setItem(K.name,n);else localStorage.removeItem(K.name);renderAvatarPreview();syncTopProfile()});
@@ -113,7 +215,19 @@ $('leaveLobby').onclick=leaveRoom;
 $('leaveSpectate').onclick=()=>{cleanupRoom();show('Top')};
 $('quitGame').onclick=()=>{if(mode==='multi')finishPlayer();else{clearInterval(timerId);show('Top')}};
 $('resultBack').onclick=returnToLobbyFromResult;
-$('chatForm').addEventListener('submit',async e=>{e.preventDefault();const inp=$('chatInput'),t=inp.value;inp.value='';try{await sendChat(t)}catch(err){toast('送信に失敗しました')}});
+$('chatForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const inp=$('chatInput'),t=inp.value;
+  if(!t.trim())return;
+  try{
+    const ok=await sendChat(t);
+    if(ok){inp.value='';inp.focus()}
+  }catch(err){
+    console.error('chat send failed',err);
+    toast('送信に失敗しました。もう一度送信してください');
+    inp.focus();
+  }
+});
 $('battleSettingsBtn').onclick=()=>{mountSoundControls($('battleSound'));$('battleSettingsModal').classList.remove('hidden')};
 $('battleSettingsClose').onclick=()=>$('battleSettingsModal').classList.add('hidden');
 
